@@ -7,6 +7,10 @@ const int maxlen = 1000;
 
 typedef struct node Node;
 
+typedef struct list {
+  Node *begin;
+} List;
+
 struct node 
 {
   char *str;
@@ -63,7 +67,17 @@ Node *push_back(Node *begin, const char *str)
 Node *pop_back(Node *begin)
 {
   // write an implementation.
-  
+  assert(begin != NULL);
+
+  Node *p = begin;
+  while (p->next->next != NULL) {
+    p = p->next;
+  }
+
+  Node *q = p->next;
+  p->next = NULL;
+  free(q);
+
   return begin;
 }
 
@@ -87,9 +101,9 @@ int main()
   }
 
   //begin = pop_front(begin);  // What will happen if you do this?
-  //begin = pop_back(begin);   // What will happen if you do this?
+  begin = pop_back(begin);   // What will happen if you do this?
  
-  //begin = remove_all(begin); // What will happen if you do this?
+  begin = remove_all(begin); // What will happen if you do this?
 
   for (const Node *p = begin; p != NULL; p = p->next) {
     printf("%s", p->str);
