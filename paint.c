@@ -13,19 +13,19 @@ typedef struct
   char pen;
 } Canvas;
 
+// Command 構造体と History構造体
+// [*]
 typedef struct command Command;
-
-struct command
-{
+struct command{
   char *str;
+  size_t bufsize;
   Command *next;
 };
 
-// Structure for history (2-D array)
 typedef struct
 {
-  size_t bufsize;
   Command *begin;
+  size_t bufsize; // [*] : この方が効率的ですね。一部の方から指摘ありました。
 } History;
 
 // functions for Canvas type
@@ -35,7 +35,7 @@ void print_canvas(FILE *fp, Canvas *c);
 void free_canvas(Canvas *c);
 
 // display functions
-void rewind_screen(FILE *fp,unsigned int line);
+void rewind_screen(FILE *fp,unsigned int line); 
 void clear_command(FILE *fp);
 void clear_screen(FILE *fp);
 
@@ -46,21 +46,18 @@ int max(const int a, const int b);
 void draw_line(Canvas *c, const int x0, const int y0, const int x1, const int y1);
 Result interpret_command(const char *command, History *his, Canvas *c);
 void save_history(const char *filename, History *his);
-Command *push_command(History *his, const char *str);
 
+// [*] list.c のpush_backと同じ
+Command *push_command(History *his, const char *str);
 
 int main(int argc, char **argv)
 {
   //for history recording
-  const int max_history = 5;
+  
   const int bufsize = 1000;
-  History his = (History){ .bufsize = bufsize, .begin = NULL};
 
-  /*his.commands = (char**)malloc(his.max_history * sizeof(char*));
-  char* tmp = (char*) malloc(his.max_history * his.bufsize * sizeof(char));
-  for (int i = 0 ; i < his.max_history ; i++)
-    his.commands[i] = tmp + (i * his.bufsize); 
-  */
+  // [*]
+  History his = (History){ .begin = NULL, .bufsize = bufsize};
 
   int width;
   int height;
@@ -85,20 +82,24 @@ int main(int argc, char **argv)
   char pen = '*';
 
   FILE *fp;
-  char buf[his.bufsize];
+  char buf[bufsize];
   fp = stdout;
   Canvas *c = init_canvas(width,height, pen);
 
   fprintf(fp,"\n"); // required especially for windows env
-  while (1) {
+  while(1){
+    // [*]
+    // hsize はひとまずなし
+    // 作る場合はリスト長を調べる関数を作っておく
     print_canvas(fp,c);
     printf("* > ");
     if(fgets(buf, bufsize, stdin) == NULL) break;
-
-    const Result r = interpret_command(buf, &his,c);
+    
+    const Result r = interpret_command(buf, &his, c);
     if (r == EXIT) break;   
     if (r == NORMAL) {
-      push_command(&his, buf);
+      // [*]
+      push_command(&his,buf);
     }
 
     rewind_screen(fp,2); // command results
@@ -223,11 +224,10 @@ void save_history(const char *filename, History *his)
     fprintf(stderr, "error: cannot open %s.\n", filename);
     return;
   }
-  
-  for (Command *p = his->begin; p != NULL; p = p->next) {
+  // [*] 線形リスト版
+  for (Command *p = his->begin ; p != NULL ; p = p->next){
     fprintf(fp, "%s", p->str);
   }
-  
 
   fclose(fp);
 }
@@ -239,7 +239,10 @@ Result interpret_command(const char *command, History *his, Canvas *c)
   buf[strlen(buf) - 1] = 0; // remove the newline character at the end
 
   const char *s = strtok(buf, " ");
-
+  if (s == NULL){ // 改行だけ入力された場合
+    printf("\n");
+    return UNKNOWN;
+  }
   // The first token corresponds to command
   if (strcmp(s, "line") == 0) {
     int p[4] = {0}; // p[0]: x0, p[1]: y0, p[2]: x1, p[3]: x1 
@@ -256,9 +259,9 @@ Result interpret_command(const char *command, History *his, Canvas *c)
       char *e;
       long v = strtol(b[i],&e, 10);
       if (*e != '\0'){
-        clear_command(stdout);
-        printf("Non-int value is included.\n");
-        return ERROR;
+	clear_command(stdout);
+	printf("Non-int value is included.\n");
+	return ERROR;
       }
       p[i] = (int)v;
     }
@@ -279,29 +282,34 @@ Result interpret_command(const char *command, History *his, Canvas *c)
 
   if (strcmp(s, "undo") == 0) {
     reset_canvas(c);
+    //[*] 線形リストの先頭からスキャンして逐次実行
+    // pop_back のスキャン中にinterpret_command を絡めた感じ
     Command *p = his->begin;
     if (p == NULL){
       clear_command(stdout);
-      printf("No command in history\n");
+      printf("no command in history\n");
+      return COMMAND;
     }
-    else {
-      Command *q = NULL;
-      while (p->next != NULL) {
-        interpret_command(p->str, his, c);
-        q = p;
-        p = p->next;
+    else{
+      Command *q = NULL; // 新たな終端を決める時に使う
+      while (p->next != NULL){ // 終端でないコマンドは実行して良い
+	      interpret_command(p->str, his, c);
+	      q = p;
+	      p = p->next;
       }
+      // 1つしかないコマンドのundoではリストの先頭を変更する
       if (q == NULL) {
-        his->begin = NULL;
-      } else {
-        q->next = NULL;
+	    his->begin = NULL;
+      }
+      else{
+	      q->next = NULL;
       }
       free(p->str);
-      free(p);
+      free(p);	
       clear_command(stdout);
       printf("undo!\n");
       return COMMAND;
-    }
+    }  
   }
 
   if (strcmp(s, "quit") == 0) {
@@ -312,22 +320,27 @@ Result interpret_command(const char *command, History *his, Canvas *c)
   return UNKNOWN;
 }
 
-Command *push_command(History *his, const char *str) {
+
+// [*] 線形リストの末尾にpush する
+Command *push_command(History *his, const char *str){
   Command *c = (Command*)malloc(sizeof(Command));
   char *s = (char*)malloc(his->bufsize);
-
   strcpy(s, str);
-  *c = (Command){ .next = NULL, .str = s};
+  
+  *c = (Command){ .str = s, .bufsize = his->bufsize, .next = NULL};
 
   Command *p = his->begin;
-  if (p == NULL) {
+
+  if ( p == NULL) {
     his->begin = c;
   }
-  else {
-    while (p->next = NULL) {
+  else{
+    while (p->next != NULL){
       p = p->next;
     }
     p->next = c;
   }
   return c;
 }
+
+
