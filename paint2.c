@@ -46,6 +46,7 @@ int max(const int a, const int b);
 void draw_line(Canvas *c, const int x0, const int y0, const int x1, const int y1);
 void draw_rectangle(Canvas *c, const int x0, const int y0, const int height, const int width);
 void draw_circle(Canvas *c, const int x0, const int y0, const int r);
+void load_text(History *his, FILE *fp, Canvas *c);
 Result interpret_command(const char *command, History *his, Canvas *c);
 void save_history(const char *filename, History *his);
 Command *push_command(History *his, const char *str);
@@ -242,6 +243,7 @@ void draw_circle(Canvas *c, const int x0, const int y0, const int r) {
   } 
 }
 
+
 void save_history(const char *filename, History *his)
 {
   const char *default_history_file = "history.txt";
@@ -257,9 +259,15 @@ void save_history(const char *filename, History *his)
   for (Command *p = his->begin; p != NULL; p = p->next) {
     fprintf(fp, "%s", p->str);
   }
-  
-
   fclose(fp);
+}
+
+void load_text(History *his, FILE *fp, Canvas *c) {
+  char tmp_buf[20];
+  while (fgets( tmp_buf, sizeof(tmp_buf), fp) != NULL) {
+    interpret_command(tmp_buf, his, c);
+    push_command(his, tmp_buf);
+  }
 }
 
 Result interpret_command(const char *command, History *his, Canvas *c)
@@ -355,6 +363,20 @@ Result interpret_command(const char *command, History *his, Canvas *c)
     clear_command(stdout);
     printf("1 circle drawn\n");
     return NORMAL;
+  }
+
+  if (strcmp(s, "load") == 0) {
+    char *filename = strtok(NULL, " "); // filename
+    
+    FILE *fp = fopen(filename, "r");
+    if (fp == NULL) {
+      printf("Failed to open the file %s\n", filename);
+      return ERROR;
+    }
+    load_text(his, fp, c);
+    clear_command(stdout);
+    printf("loaded the file %s\n", filename);
+    return COMMAND;
   }
 
   if (strcmp(s, "save") == 0) {
