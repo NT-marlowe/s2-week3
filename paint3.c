@@ -56,9 +56,13 @@ void load_text(History *his, FILE *fp, Canvas *c, PenHist phs);
 void change_pen(PenHist *phs, const char pen);
 Result interpret_command(const char *command, History *his, Canvas *c, PenHist *phs, int is_load);
 void save_history(const char *filename, History *his);
-Command *push_command(History *his, const char *str, PenHist phs);
+Command *push_command(History *his, const char *str, PenHist phs, int is_load);
 
-
+/*
+愚直に実装するとchpenをundoできないので、改造したのがこのファイルです。load_textとundoの両方に対してもchpenが
+適用されるように頑張ったのですがうまくいきませんでした。
+chpenをundoできないがそれ以外は動くプログラムが、paint3_base.cに入っています。
+*/
 int main(int argc, char **argv)
 {
   //for history recording
@@ -108,7 +112,7 @@ int main(int argc, char **argv)
     const Result r = interpret_command(buf, &his,c,&phs, 0);
     if (r == EXIT) break;   
     if (r == NORMAL) {
-      push_command(&his, buf, phs);
+      push_command(&his, buf, phs, 0);
     }
 
     rewind_screen(fp,2); // command results
@@ -275,11 +279,17 @@ void save_history(const char *filename, History *his)
 }
 
 void load_text(History *his, FILE *fp, Canvas *c, PenHist phs) {
-  char tmp_buf[20];
+  char tmp_buf[30];
+  // char *command;
   while (fgets( tmp_buf, sizeof(tmp_buf), fp) != NULL) {
+    // c->pen = tmp_buf[0];
+    // c->pen = strtok(tmp_buf, " ")[0];
+    // command = strtok(tmp_buf, " ");
     interpret_command(tmp_buf, his, c, &phs, 1);
-    push_command(his, tmp_buf, phs);
+    push_command(his, tmp_buf, phs, 1);
+    // push_command(his, command, phs, 1);
   }
+  c->pen = phs.pens[phs.idx];
 }
 
 void change_pen(PenHist *phs, const char pen) {
@@ -438,7 +448,6 @@ Result interpret_command(const char *command, History *his, Canvas *c, PenHist *
     }
     else {
       while (p->next != NULL) {
-        // interpret_command(p->str, his, c, phs);
         p = p->next;
       }
       if (strcmp(p->str, "chpen") == 0) {
@@ -457,6 +466,7 @@ Result interpret_command(const char *command, History *his, Canvas *c, PenHist *
       } else {
         q->next = NULL;
       }
+      c->pen = phs->pens[phs->idx];
       free(p->str);
       free(p);
       clear_command(stdout);
@@ -473,10 +483,9 @@ Result interpret_command(const char *command, History *his, Canvas *c, PenHist *
   return UNKNOWN;
 }
 
-Command *push_command(History *his, const char *str, PenHist phs) {
+Command *push_command(History *his, const char *str, PenHist phs, int is_load) {
   Command *c = (Command*)malloc(sizeof(Command));
   char *s = (char*)malloc(his->bufsize);
-
   strcpy(s, str);
   *c = (Command){ .next = NULL, .str = s, .pen = phs.pens[phs.idx]};
   Command *p = his->begin;
