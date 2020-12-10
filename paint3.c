@@ -3,7 +3,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <errno.h> // for error catch
-
+#define num_pen 1000
 // Structure for canvas
 typedef struct
 {
@@ -19,7 +19,13 @@ struct command
 {
   char *str;
   Command *next;
+  char pen;
 };
+
+typedef struct {
+  int idx;
+  char pens[num_pen];
+} PenHist;
 
 // Structure for history (2-D array)
 typedef struct
@@ -43,14 +49,14 @@ void clear_screen(FILE *fp);
 typedef enum res{ EXIT, NORMAL, COMMAND, UNKNOWN, ERROR} Result;
 
 int max(const int a, const int b);
-void draw_line(Canvas *c, const int x0, const int y0, const int x1, const int y1);
-void draw_rectangle(Canvas *c, const int x0, const int y0, const int height, const int width);
-void draw_circle(Canvas *c, const int x0, const int y0, const int r);
-void load_text(History *his, FILE *fp, Canvas *c);
-void change_pen(Canvas *c, const char pen);
-Result interpret_command(const char *command, History *his, Canvas *c);
+void draw_line(Canvas *c, PenHist phs, const int x0, const int y0, const int x1, const int y1);
+void draw_rectangle(Canvas *c, PenHist phs, const int x0, const int y0, const int height, const int width);
+void draw_circle(Canvas *c, PenHist phs, const int x0, const int y0, const int r);
+void load_text(History *his, FILE *fp, Canvas *c, PenHist phs);
+void change_pen(PenHist *phs, const char pen);
+Result interpret_command(const char *command, History *his, Canvas *c, PenHist *phs, int is_load);
 void save_history(const char *filename, History *his);
-Command *push_command(History *his, const char *str);
+Command *push_command(History *his, const char *str, PenHist phs);
 
 
 int main(int argc, char **argv)
@@ -58,7 +64,8 @@ int main(int argc, char **argv)
   //for history recording
   const int bufsize = 1000;
   History his = (History){ .bufsize = bufsize, .begin = NULL};
-
+  PenHist phs = (PenHist){ .idx = 0};
+  phs.pens[0] = '*';
   /*his.commands = (char**)malloc(his.max_history * sizeof(char*));
   char* tmp = (char*) malloc(his.max_history * his.bufsize * sizeof(char));
   for (int i = 0 ; i < his.max_history ; i++)
@@ -98,10 +105,10 @@ int main(int argc, char **argv)
     printf("* > ");
     if(fgets(buf, bufsize, stdin) == NULL) break;
 
-    const Result r = interpret_command(buf, &his,c);
+    const Result r = interpret_command(buf, &his,c,&phs, 0);
     if (r == EXIT) break;   
     if (r == NORMAL) {
-      push_command(&his, buf);
+      push_command(&his, buf, phs);
     }
 
     rewind_screen(fp,2); // command results
@@ -199,7 +206,7 @@ int max(const int a, const int b)
 {
   return (a > b) ? a : b;
 }
-void draw_line(Canvas *c, const int x0, const int y0, const int x1, const int y1)
+void draw_line(Canvas *c, PenHist phs, const int x0, const int y0, const int x1, const int y1)
 {
   const int width = c->width;
   const int height = c->height;
@@ -215,8 +222,10 @@ void draw_line(Canvas *c, const int x0, const int y0, const int x1, const int y1
   }
 }
 
-void draw_rectangle(Canvas *c, const int x0, const int y0, const int height, const int width) {
-  char pen = c->pen;
+void draw_rectangle(Canvas *c, PenHist phs, const int x0, const int y0, const int height, const int width) {
+  // char pen = c->pen;
+  char pen = phs.pens[phs.idx];
+
 
   for (int i = 0; i <= width; i++) {
     int y = y0 + i;
@@ -234,8 +243,10 @@ void draw_rectangle(Canvas *c, const int x0, const int y0, const int height, con
   }
 }
 
-void draw_circle(Canvas *c, const int x0, const int y0, const int r) {
-  char pen = c->pen;
+void draw_circle(Canvas *c, PenHist phs, const int x0, const int y0, const int r) {
+  // char pen = c->pen;
+  char pen = phs.pens[phs.idx];
+
   for (int x = 0; x < c->width; x++) {
     for (int y = 0; y < c->height; y++) {
       int d_square = (x0-x)*(x0-x) + (y0-y)*(y0-y);
@@ -258,30 +269,40 @@ void save_history(const char *filename, History *his)
   }
   
   for (Command *p = his->begin; p != NULL; p = p->next) {
-    fprintf(fp, "%s", p->str);
+    fprintf(fp, "%c %s", p->pen, p->str);
   }
   fclose(fp);
 }
 
-void load_text(History *his, FILE *fp, Canvas *c) {
+void load_text(History *his, FILE *fp, Canvas *c, PenHist phs) {
   char tmp_buf[20];
   while (fgets( tmp_buf, sizeof(tmp_buf), fp) != NULL) {
-    interpret_command(tmp_buf, his, c);
-    push_command(his, tmp_buf);
+    interpret_command(tmp_buf, his, c, &phs, 1);
+    push_command(his, tmp_buf, phs);
   }
 }
 
-void change_pen(Canvas *c, const char pen) {
-  c->pen = pen;
+void change_pen(PenHist *phs, const char pen) {
+  phs->idx++;
+  phs->pens[phs->idx] = pen;
 }
 
-Result interpret_command(const char *command, History *his, Canvas *c)
+Result interpret_command(const char *command, History *his, Canvas *c, PenHist *phs, int is_load)
 {
   char buf[his->bufsize];
   strcpy(buf, command);
   buf[strlen(buf) - 1] = 0; // remove the newline character at the end
 
-  const char *s = strtok(buf, " ");
+  // const char pen = strtok(buf, " ");
+  // const char *s = strtok(NULL, " ");
+  char pen = 'X';
+  char *s;
+  if (is_load) {
+    pen = strtok(buf, " ")[0];
+    s = strtok(NULL, " ");
+  } else {
+    s = strtok(buf, " ");
+  }
 
   // The first token corresponds to command
   if (strcmp(s, "line") == 0) {
@@ -306,7 +327,7 @@ Result interpret_command(const char *command, History *his, Canvas *c)
       p[i] = (int)v;
     }
 
-    draw_line(c,p[0],p[1],p[2],p[3]);
+    draw_line(c,*phs,p[0],p[1],p[2],p[3]);
     clear_command(stdout);
     printf("1 line drawn\n");
     return NORMAL;
@@ -335,7 +356,7 @@ Result interpret_command(const char *command, History *his, Canvas *c)
       p[i] = (int)v;
     }
 
-    draw_rectangle(c,p[0],p[1],p[2],p[3]);
+    draw_rectangle(c,*phs,p[0],p[1],p[2],p[3]);
     clear_command(stdout);
     printf("1 rectangle drawn\n");
     return NORMAL;
@@ -364,7 +385,7 @@ Result interpret_command(const char *command, History *his, Canvas *c)
       p[i] = (int)v;
     }
 
-    draw_circle(c,p[0], p[1], p[2]);
+    draw_circle(c,*phs,p[0], p[1], p[2]);
     clear_command(stdout);
     printf("1 circle drawn\n");
     return NORMAL;
@@ -378,20 +399,25 @@ Result interpret_command(const char *command, History *his, Canvas *c)
       printf("Failed to open the file %s\n", filename);
       return ERROR;
     }
-    load_text(his, fp, c);
+    load_text(his, fp, c, *phs);
     clear_command(stdout);
     printf("loaded the file %s\n", filename);
     return COMMAND;
   }
   if (strcmp(s, "chpen") == 0) {
     char *tmp = strtok(NULL, " ");
+    if (tmp == NULL) {
+      printf("Enter one caracter\n");
+      return ERROR;
+    }
     if (strlen(tmp) != 1) {
       printf("Enter only one character\n");
       return ERROR;
     }
     const char pen = tmp[0];
-    change_pen(c, pen);
-    printf("changed pen to %c\n", pen);
+    change_pen(phs, pen);
+    clear_command(stdout);
+    printf("changed pen to %c\n",pen);
     return NORMAL;
   }
 
@@ -411,9 +437,18 @@ Result interpret_command(const char *command, History *his, Canvas *c)
       printf("No command in history\n");
     }
     else {
+      while (p->next != NULL) {
+        // interpret_command(p->str, his, c, phs);
+        p = p->next;
+      }
+      if (strcmp(p->str, "chpen") == 0) {
+        phs->idx = (phs->idx > 0) ? phs->idx - 1 : 0;//多分条件分岐は必要ない
+      }
+      p = his->begin;
       Command *q = NULL;
       while (p->next != NULL) {
-        interpret_command(p->str, his, c);
+        c->pen = p->pen;
+        interpret_command(p->str, his, c, phs, 0);
         q = p;
         p = p->next;
       }
@@ -438,13 +473,12 @@ Result interpret_command(const char *command, History *his, Canvas *c)
   return UNKNOWN;
 }
 
-Command *push_command(History *his, const char *str) {
+Command *push_command(History *his, const char *str, PenHist phs) {
   Command *c = (Command*)malloc(sizeof(Command));
   char *s = (char*)malloc(his->bufsize);
 
   strcpy(s, str);
-  *c = (Command){ .next = NULL, .str = s};
-
+  *c = (Command){ .next = NULL, .str = s, .pen = phs.pens[phs.idx]};
   Command *p = his->begin;
   if (p == NULL) {
     his->begin = c;
