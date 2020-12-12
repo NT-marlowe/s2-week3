@@ -44,7 +44,7 @@ typedef enum res{ EXIT, NORMAL, COMMAND, UNKNOWN, ERROR} Result;
 
 int max(const int a, const int b);
 void draw_line(Canvas *c, const int x0, const int y0, const int x1, const int y1);
-void draw_rectangle(Canvas *c, const int x0, const int y0, const int height, const int width);
+void draw_rectangle(Canvas *c, const int x0, const int y0, const int width, const int height);
 void draw_circle(Canvas *c, const int x0, const int y0, const int r);
 void load_text(History *his, FILE *fp, Canvas *c);
 void change_pen(Canvas *c, const char pen);
@@ -215,17 +215,17 @@ void draw_line(Canvas *c, const int x0, const int y0, const int x1, const int y1
   }
 }
 
-void draw_rectangle(Canvas *c, const int x0, const int y0, const int height, const int width) {
+void draw_rectangle(Canvas *c, const int x0, const int y0, const int width, const int height) {
   char pen = c->pen;
 
-  for (int i = 0; i <= width; i++) {
+  for (int i = 0; i <= height; i++) {
     int y = y0 + i;
     if ((y >= 0) && (y < c->height)) {
       if ( (x0 >= 0) && (x0 < c->width)) c->canvas[x0][y] = pen;
       if ( (x0+width >= 0) && (x0+width < c->width)) c->canvas[x0+width][y] = pen;
     }
   }
-  for (int i = 0; i <= height; i++) {
+  for (int i = 0; i <= width; i++) {
     int x = x0 + i;
     if ( (x >= 0) && (x < c->width)) {
       if ( (y0 >= 0) && (y0 < c->height)) c->canvas[x][y0] = pen;
