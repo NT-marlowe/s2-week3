@@ -128,11 +128,15 @@ Canvas *init_canvas(int width,int height, char pen)
   new->width = width;
   new->height = height;
   new->canvas = (char **)malloc(width * sizeof(char *));
+  new->colors = (char **)malloc(width * sizeof(char *));
 
   char *tmp = (char *)malloc(width*height*sizeof(char));
+  char *tmp_color = (char *)malloc(width*height*sizeof(char));
   memset(tmp, ' ', width*height*sizeof(char));
+  memset(tmp_color, 'w', width*height*sizeof(char));
   for (int i = 0 ; i < width ; i++){
     new->canvas[i] = tmp + i * height;
+    new->colors[i] = tmp_color + i * height;
   }
   
   new->pen = pen;
@@ -165,11 +169,13 @@ void print_canvas(FILE *fp, Canvas *c)
     fprintf(fp,"|");
     for (int x = 0 ; x < width; x++){
       const char d = canvas[x][y];
+      const char color = c->colors[x][y];
       // if (d == ' ') fputc(d, fp);
       // else fputc_with_color(fp, d, c->pencolor);
       // fputc(d, fp);                  ok
       // fprintf(fp, "%c", d);          ok
-      fputc_with_color(fp, d, c->pencolor);
+      // fputc_with_color(fp, d, c->pencolor);
+      fputc_with_color(fp, d, color);
     }
     fprintf(fp,"|\n");
   }
@@ -186,6 +192,8 @@ void free_canvas(Canvas *c)
 {
   free(c->canvas[0]); //  for 2-D array free
   free(c->canvas);
+  free(c->colors[0]);
+  free(c->colors);
   free(c);
 }
 
@@ -222,6 +230,7 @@ void draw_line(Canvas *c, const int x0, const int y0, const int x1, const int y1
     const int y = y0 + i * (y1 - y0) / n;
     if ( (x >= 0) && (x< width) && (y >= 0) && (y < height))
       c->canvas[x][y] = pen;
+      c->colors[x][y] = c->pencolor;
   }
 }
 
@@ -231,15 +240,28 @@ void draw_rectangle(Canvas *c, const int x0, const int y0, const int width, cons
   for (int i = 0; i <= height; i++) {
     int y = y0 + i;
     if ((y >= 0) && (y < c->height)) {
-      if ( (x0 >= 0) && (x0 < c->width)) c->canvas[x0][y] = pen;
-      if ( (x0+width >= 0) && (x0+width < c->width)) c->canvas[x0+width][y] = pen;
+      if ( (x0 >= 0) && (x0 < c->width)) {
+        c->canvas[x0][y] = pen;
+        c->colors[x0][y] = c->pencolor;
+      }
+      if ( (x0+width >= 0) && (x0+width < c->width)) {
+        c->canvas[x0+width][y] = pen;
+        c->colors[x0+width][y] = c->pencolor;
+      }
     }
   }
   for (int i = 0; i <= width; i++) {
     int x = x0 + i;
     if ( (x >= 0) && (x < c->width)) {
-      if ( (y0 >= 0) && (y0 < c->height)) c->canvas[x][y0] = pen;
-      if ( (y0+height >= 0) && (y0+height < c->height)) c->canvas[x][y0+height] = pen;
+      if ( (y0 >= 0) && (y0 < c->height)) {
+        c->canvas[x][y0] = pen;
+        c->colors[x][y0] = c->pencolor;
+      }
+
+      if ( (y0+height >= 0) && (y0+height < c->height)) {
+        c->canvas[x][y0+height] = pen;
+        c->colors[x][y0+height] = c->pencolor;
+      }
     }
   }
 }
@@ -249,7 +271,10 @@ void draw_circle(Canvas *c, const int x0, const int y0, const int r) {
   for (int x = 0; x < c->width; x++) {
     for (int y = 0; y < c->height; y++) {
       int d_square = (x0-x)*(x0-x) + (y0-y)*(y0-y);
-      if (d_square == r*r) c->canvas[x][y] = pen;
+      if (d_square == r*r) {
+        c->canvas[x][y] = pen;
+        c->colors[x][y] = c->pencolor;
+      }
     }
   } 
 }
@@ -443,6 +468,11 @@ Result interpret_command(const char *command, History *his, Canvas *c)
       printf("w: white, r:red, b:blue, g:green\n");
       return ERROR;
     } 
+    if (strlen(tmp) > 1) {
+      clear_command(stdout);
+      printf("Enter only one character\n");
+      return ERROR;
+    }
     const char pencolor = tmp[0];
     char *colorname;
     if (pencolor == 'w') colorname = "white";
