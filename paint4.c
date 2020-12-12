@@ -10,8 +10,9 @@ typedef struct
   int width;
   int height;
   char **canvas;
+  char **colors; //BMP形式での保存に必要
   char pen;
-  char *pencolor;
+  char pencolor; //{'w':white, 'r':red, b:'blue', g:'green'}
 } Canvas;
 
 typedef struct command Command;
@@ -49,11 +50,13 @@ void draw_rectangle(Canvas *c, const int x0, const int y0, const int height, con
 void draw_circle(Canvas *c, const int x0, const int y0, const int r);
 void load_text(History *his, FILE *fp, Canvas *c);
 void change_pen(Canvas *c, const char pen);
+void change_color(Canvas *c, const char color);
 Result interpret_command(const char *command, History *his, Canvas *c);
 void save_history(const char *filename, History *his);
 void save_BMPimage(const char *filename, Canvas *c);
 Command *push_command(History *his, const char *str);
 
+void fputc_with_color(FILE *fp, const char c, const char color);
 
 int main(int argc, char **argv)
 {
@@ -133,6 +136,7 @@ Canvas *init_canvas(int width,int height, char pen)
   }
   
   new->pen = pen;
+  new->pencolor = 'w';
   return new;
 }
 
@@ -160,8 +164,12 @@ void print_canvas(FILE *fp, Canvas *c)
   for (int y = 0 ; y < height ; y++) {
     fprintf(fp,"|");
     for (int x = 0 ; x < width; x++){
-      const char c = canvas[x][y];
-      fputc(c, fp);
+      const char d = canvas[x][y];
+      // if (d == ' ') fputc(d, fp);
+      // else fputc_with_color(fp, d, c->pencolor);
+      // fputc(d, fp);                  ok
+      // fprintf(fp, "%c", d);          ok
+      fputc_with_color(fp, d, c->pencolor);
     }
     fprintf(fp,"|\n");
   }
@@ -279,7 +287,9 @@ void save_BMPimage(const char *filename, Canvas *c) {
 
   for (int i = 0; i < c->width; i++) {
     for (int j = 0; j < c->height; j++) {
-      fprintf(fp, "%c", c->canvas[i][j]);
+      // fprintf(fp, "%c", c->canvas[i][j]);
+      // fputc(c->canvas[i][j], fp);
+      fputc_with_color(fp, c->canvas[i][j], c->pencolor);
     }
     fprintf(fp, "\n");
   }
@@ -296,6 +306,10 @@ void load_text(History *his, FILE *fp, Canvas *c) {
 
 void change_pen(Canvas *c, const char pen) {
   c->pen = pen;
+}
+
+void change_color(Canvas *c, const char color) {
+  c->pencolor = color;
 }
 
 Result interpret_command(const char *command, History *his, Canvas *c)
@@ -398,6 +412,7 @@ Result interpret_command(const char *command, History *his, Canvas *c)
     
     FILE *fp = fopen(filename, "r");
     if (fp == NULL) {
+      clear_command(stdout);
       printf("Failed to open the file %s\n", filename);
       return ERROR;
     }
@@ -410,12 +425,38 @@ Result interpret_command(const char *command, History *his, Canvas *c)
   if (strcmp(s, "chpen") == 0) {
     char *tmp = strtok(NULL, " ");
     if (strlen(tmp) != 1) {
+      clear_command(stdout);
       printf("Enter only one character\n");
       return ERROR;
     }
     const char pen = tmp[0];
     change_pen(c, pen);
+    clear_command(stdout);
     printf("changed pen to %c\n", pen);
+    return NORMAL;
+  }
+
+  if (strcmp(s, "chcolor") == 0) {
+    char *tmp = strtok(NULL, " ");
+    if (tmp == NULL) {
+      clear_command(stdout);
+      printf("w: white, r:red, b:blue, g:green\n");
+      return ERROR;
+    } 
+    const char pencolor = tmp[0];
+    char *colorname;
+    if (pencolor == 'w') colorname = "white";
+    else if (pencolor == 'r') colorname = "red";
+    else if (pencolor == 'b') colorname = "blue";
+    else if (pencolor == 'g') colorname = "green";
+    else {
+      clear_command(stdout);
+      printf("avairable color is w, r, b, and g\n");
+      return ERROR;
+    }
+    change_color(c, pencolor);
+    clear_command(stdout);
+    printf("changed pencolor to %s\n", colorname);
     return NORMAL;
   }
 
@@ -488,4 +529,24 @@ Command *push_command(History *his, const char *str) {
     p->next = c;
   }
   return c;
+}
+
+void fputc_with_color(FILE *fp, const char c, const char color) {
+  if (c == ' ') {
+    fputc(' ', fp);
+    return;
+  }
+  
+  if (color == 'w') {
+    fprintf(fp, "\e[37m%c\e[0m", c);
+  } 
+  else if (color == 'r'){
+    fprintf(fp, "\e[31m%c\e[0m", c);
+  }
+  else if (color == 'g') {
+    fprintf(fp, "\e[32m%c\e[0m", c);
+  }
+  else if (color == 'b') {
+    fprintf(fp, "\e[34m%c\e[0m", c);
+  } 
 }
